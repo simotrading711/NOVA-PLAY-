@@ -1,0 +1,56 @@
+name: Build NOVA PLAY APK
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'NOVA_PLAY_PROJECT.zip'
+      - '.github/workflows/build-apk.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK packages
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Extract project
+        run: |
+          test -f NOVA_PLAY_PROJECT.zip
+          unzip -q NOVA_PLAY_PROJECT.zip -d extracted
+          test -f extracted/NovaPlayAndroid/app/build.gradle
+      - name: Configure signing key
+        env:
+          NOVA_KEYSTORE_BASE64: ${{ secrets.NOVA_KEYSTORE_BASE64 }}
+          NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
+          NOVA_KEY_ALIAS: ${{ secrets.NOVA_KEY_ALIAS }}
+          NOVA_KEY_PASSWORD: ${{ secrets.NOVA_KEY_PASSWORD }}
+        run: |
+          test -n "$NOVA_KEYSTORE_BASE64" || (echo 'Missing GitHub secret NOVA_KEYSTORE_BASE64' && exit 1)
+          test -n "$NOVA_KEYSTORE_PASSWORD" || (echo 'Missing GitHub secret NOVA_KEYSTORE_PASSWORD' && exit 1)
+          test -n "$NOVA_KEY_ALIAS" || (echo 'Missing GitHub secret NOVA_KEY_ALIAS' && exit 1)
+          test -n "$NOVA_KEY_PASSWORD" || (echo 'Missing GitHub secret NOVA_KEY_PASSWORD' && exit 1)
+          echo "$NOVA_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/novaplay-release.jks"
+          echo "NOVA_KEYSTORE_PATH=$RUNNER_TEMP/novaplay-release.jks" >> "$GITHUB_ENV"
+          echo "NOVA_KEYSTORE_PASSWORD=$NOVA_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "NOVA_KEY_ALIAS=$NOVA_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "NOVA_KEY_PASSWORD=$NOVA_KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Build signed release APK
+        working-directory: extracted/NovaPlayAndroid
+        run: gradle assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOVA-PLAY-release-apk
+          path: extracted/NovaPlayAndroid/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
