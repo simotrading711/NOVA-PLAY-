@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - f NOVA_PLAY_COMPLETE_ALL_FEATURES.zip
+      test -f NOVA_PLAY_COMPLETE_ALL_FEATURES.zip
       - '.github/workflows/build-apk.yml'
 permissions:
   contents: read
