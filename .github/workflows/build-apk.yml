@@ -1,4 +1,4 @@
-name: Build NOVA PLAY APK
+name: Build NOVA PLAY APk
 on:
   workflow_dispatch:
   push:
