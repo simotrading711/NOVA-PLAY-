@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'NOVA_PLAY_GENRAL_STYLE_UPDATE.zip'
+      - 'NOVA_PLAY_IMPLAYER_MOBILE.zip'
       - '.github/workflows/build-apk.yml'
 
 permissions:
