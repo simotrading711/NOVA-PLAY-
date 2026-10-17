@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'NOVA_PLAY_IMPLAYER_DEFAULT.zip'
-      - 'NOVA_PLAY_IMPLAYER_MOBILE.zip'
+      - '*.zip'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -26,8 +25,12 @@ jobs:
 
       - name: Check Android SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          test -d "$ANDROID_HOME/platform-tools"
+          echo "ANDROID_HOME=${ANDROID_HOME:-not-set}"
+          if [ -z "${ANDROID_HOME:-}" ] || [ ! -d "$ANDROID_HOME" ]; then
+            echo "ERROR: Android SDK directory is not available on this runner."
+            exit 1
+          fi
+          ls -la "$ANDROID_HOME" | head -40
 
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -38,28 +41,42 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f NOVA_PLAY_IMPLAYER_MOBILE.zip ]; then
-            ZIP_FILE="NOVA_PLAY_IMPLAYER_MOBILE.zip"
-          elif [ -f NOVA_PLAY_GENRAL_STYLE_UPDATE.zip ]; then
-            ZIP_FILE="NOVA_PLAY_GENRAL_STYLE_UPDATE.zip"
-          else
-            echo "ERROR: Upload NOVA_PLAY_IMPLAYER_MOBILE.zip or NOVA_PLAY_GENRAL_STYLE_UPDATE.zip to the repository root (Code page)."
+          ZIP=""
+          for f in \
+            NOVA_PLAY_IMPLAYER_DEFAULT.zip \
+            NOVA_PLAY_IMPLAYER_MOBILE.zip \
+            NOVA_PLAY_ACCOUNTS_SUBSCRIPTIONS.zip \
+            NOVA_PLAY_GENRAL_STYLE_UPDATE.zip; do
+            if [ -f "$f" ]; then ZIP="$f"; break; fi
+          done
+
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: No recognized NOVA PLAY ZIP found in repository root."
             echo "Files in repository root:"
             ls -la
             exit 1
           fi
-          echo "Using $ZIP_FILE"
+
+          echo "Using archive: $ZIP"
           mkdir -p extracted
-          unzip -q "$ZIP_FILE" -d extracted
-          if [ -f extracted/NovaPlayAndroid/app/build.gradle ]; then
-            echo "PROJECT_DIR=extracted/NovaPlayAndroid" >> "$GITHUB_ENV"
-          elif [ -f extracted/app/build.gradle ]; then
-            echo "PROJECT_DIR=extracted" >> "$GITHUB_ENV"
-          else
-            echo "ERROR: ZIP extracted, but app/build.gradle was not found. ZIP layout:"
-            find extracted -maxdepth 4 -type f | head -100
+          unzip -q "$ZIP" -d extracted
+
+          PROJECT_FILE="$(find extracted -type f -path '*/app/build.gradle' -print -quit)"
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: Could not find app/build.gradle inside $ZIP"
+            find extracted -maxdepth 5 -type f | head -200
             exit 1
           fi
+
+          PROJECT_DIR="$(dirname "$(dirname "$PROJECT_FILE")")"
+          if [ ! -f "$PROJECT_DIR/app/src/main/assets/index.html" ]; then
+            echo "ERROR: Expected app/src/main/assets/index.html was not found in $PROJECT_DIR"
+            find "$PROJECT_DIR/app/src/main" -maxdepth 4 -type f | head -100 || true
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project directory: $PROJECT_DIR"
 
       - name: Build debug APK
         run: gradle -p "$PROJECT_DIR" assembleDebug
@@ -68,5 +85,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NOVA-PLAY-debug-apk
-          path: '**/app/build/outputs/apk/debug/app-debug.apk'
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
