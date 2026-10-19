@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,10 +28,9 @@ jobs:
         run: |
           echo "ANDROID_HOME=${ANDROID_HOME:-not-set}"
           if [ -z "${ANDROID_HOME:-}" ] || [ ! -d "$ANDROID_HOME" ]; then
-            echo "ERROR: Android SDK directory is not available on this runner."
+            echo "ERROR: Android SDK directory is not available."
             exit 1
           fi
-          ls -la "$ANDROID_HOME" | head -40
 
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -41,36 +41,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP=""
-          for f in \
-            NOVA_PLAY_API_DIAGNOSTIC_FIX.zip \
-            NOVA_PLAY_IMPLAYER_MOBILE.zip \
-            NOVA_PLAY_ACCOUNTS_SUBSCRIPTIONS.zip \
-            NOVA_PLAY_GENRAL_STYLE_UPDATE.zip; do
-            if [ -f "$f" ]; then ZIP="$f"; break; fi
-          done
 
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: No recognized NOVA PLAY ZIP found in repository root."
+          ZIP="NOVA_PLAY_GENRAL_STYLE_UPDATE.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR: Preferred project ZIP not found: $ZIP"
             echo "Files in repository root:"
             ls -la
             exit 1
           fi
 
           echo "Using archive: $ZIP"
+
           mkdir -p extracted
           unzip -q "$ZIP" -d extracted
 
           PROJECT_FILE="$(find extracted -type f -path '*/app/build.gradle' -print -quit)"
+
           if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: Could not find app/build.gradle inside $ZIP"
+            echo "ERROR: Could not find app/build.gradle"
             find extracted -maxdepth 5 -type f | head -200
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$(dirname "$PROJECT_FILE")")"
+
           if [ ! -f "$PROJECT_DIR/app/src/main/assets/index.html" ]; then
-            echo "ERROR: Expected app/src/main/assets/index.html was not found in $PROJECT_DIR"
+            echo "ERROR: index.html not found in the Android project."
             find "$PROJECT_DIR/app/src/main" -maxdepth 4 -type f | head -100 || true
             exit 1
           fi
@@ -80,6 +77,15 @@ jobs:
 
       - name: Build debug APK
         run: gradle -p "$PROJECT_DIR" assembleDebug
+
+      - name: Verify APK
+        run: |
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK was not generated."
+            exit 1
+          fi
+          ls -lh "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
