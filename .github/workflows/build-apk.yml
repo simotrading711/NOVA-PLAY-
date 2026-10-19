@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
           ZIP=""
           for f in \
-            NOVA_PLAY_SERVER_CHANNELS_API_UPDATED_FIXED.zip \
+            NOVA_PLAY_API_DIAGNOSTIC_FIX.zip \
             NOVA_PLAY_IMPLAYER_MOBILE.zip \
             NOVA_PLAY_ACCOUNTS_SUBSCRIPTIONS.zip \
             NOVA_PLAY_GENRAL_STYLE_UPDATE.zip; do
