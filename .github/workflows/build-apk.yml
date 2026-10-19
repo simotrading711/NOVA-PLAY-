@@ -1,3 +1,4 @@
+
 name: Build NOVA PLAY APK
 
 on:
@@ -42,49 +43,78 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP="NOVA_PLAY_GENRAL_STYLE_UPDATE.zip"
+          ZIP="NOVA_PLAY_BLACK_GREEN_UPDATE.zip"
 
           if [ ! -f "$ZIP" ]; then
-            echo "ERROR: Preferred project ZIP not found: $ZIP"
-            echo "Files in repository root:"
-            ls -la
+            echo "ERROR: Project ZIP not found: $ZIP"
+            echo "ZIP files available in repository root:"
+            find . -maxdepth 1 -type f -iname '*.zip' -print
             exit 1
           fi
 
-          echo "Using archive: $ZIP"
+          echo "Using project archive: $ZIP"
+
+          echo "Checking ZIP integrity..."
+          unzip -t "$ZIP"
 
           mkdir -p extracted
           unzip -q "$ZIP" -d extracted
 
-          PROJECT_FILE="$(find extracted -type f -path '*/app/build.gradle' -print -quit)"
+          echo "Searching for Android Gradle project..."
+          PROJECT_FILE="$(find extracted -type f \
+            -path '*/app/build.gradle' -print -quit)"
 
           if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: Could not find app/build.gradle"
-            find extracted -maxdepth 5 -type f | head -200
+            PROJECT_FILE="$(find extracted -type f \
+              -path '*/app/build.gradle.kts' -print -quit)"
+          fi
+
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: Could not find app/build.gradle or app/build.gradle.kts"
+            echo "Files found in the extracted archive:"
+            find extracted -maxdepth 6 -type f | head -200
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$(dirname "$PROJECT_FILE")")"
 
+          echo "Project directory: $PROJECT_DIR"
+
           if [ ! -f "$PROJECT_DIR/app/src/main/assets/index.html" ]; then
-            echo "ERROR: index.html not found in the Android project."
-            find "$PROJECT_DIR/app/src/main" -maxdepth 4 -type f | head -100 || true
+            echo "ERROR: Android assets/index.html was not found."
+            echo "Checking available project files:"
+            find "$PROJECT_DIR/app/src/main" -maxdepth 5 -type f | head -150 || true
             exit 1
+          fi
+
+          echo "Checking Android project settings..."
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ] && \
+             [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
+            echo "WARNING: settings.gradle was not found in project root."
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Android project directory: $PROJECT_DIR"
+          echo "Project files detected successfully."
 
       - name: Build debug APK
-        run: gradle -p "$PROJECT_DIR" assembleDebug
+        run: |
+          set -euo pipefail
+          gradle -p "$PROJECT_DIR" assembleDebug
 
       - name: Verify APK
         run: |
+          set -euo pipefail
+
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+
           if [ ! -f "$APK" ]; then
             echo "ERROR: APK was not generated."
+            echo "Checking available APK files..."
+            find "$PROJECT_DIR" -type f -name '*.apk' -print || true
             exit 1
           fi
+
+          echo "APK generated successfully:"
           ls -lh "$APK"
 
       - name: Upload APK
@@ -93,3 +123,4 @@ jobs:
           name: NOVA-PLAY-debug-apk
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
