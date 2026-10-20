@@ -46,8 +46,6 @@ jobs:
           ZIP=""
 
           for candidate in \
-          "NOVA_PLAY_API_DIAGNOSTIC_FIX.zip" \
-            "NOVA_PLAY_BLACK_GREEN_ICON.zip" \
             "NOVA_PLAY_BLACK_GREEN_UPDATE.zip" \
             "NOVA_PLAY_GENRAL_STYLE_UPDATE.zip"; do
             if [ -f "$candidate" ]; then
