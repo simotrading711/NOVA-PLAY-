@@ -1,4 +1,3 @@
-
 name: Build NOVA PLAY APK
 
 on:
@@ -27,11 +26,12 @@ jobs:
 
       - name: Check Android SDK
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-not-set}"
+          set -e
           if [ -z "${ANDROID_HOME:-}" ] || [ ! -d "$ANDROID_HOME" ]; then
-            echo "ERROR: Android SDK directory is not available."
+            echo "ERROR: Android SDK is unavailable."
             exit 1
           fi
+          echo "Android SDK: $ANDROID_HOME"
 
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -43,69 +43,67 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP=""
+          # يمكنك تحديد اسم الملف من خلال متغير ZIP_FILE
+          ZIP_FILE="${ZIP_FILE:-NOVA_PLAY_ALL_IN_ONE.zip}"
 
-          for candidate in \
-            "NOVA_PLAY_BLACK_GREEN_UPDATE.zip" \
-            "NOVA_PLAY_GENRAL_STYLE_UPDATE.zip"; do
-            if [ -f "$candidate" ]; then
-              ZIP="$candidate"
-              break
-            fi
-          done
-
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: No supported NOVA PLAY ZIP found."
-            echo "ZIP files in repository root:"
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP file not found: $ZIP_FILE"
+            echo "Available ZIP files:"
             find . -maxdepth 1 -type f -iname '*.zip' -print
             exit 1
           fi
 
-          echo "Using archive: $ZIP"
+          echo "Using ZIP: $ZIP_FILE"
 
-          unzip -t "$ZIP"
+          # فحص سلامة الملف قبل استخراجه
+          unzip -t "$ZIP_FILE"
 
+          rm -rf extracted
           mkdir -p extracted
-          unzip -q "$ZIP" -d extracted
+          unzip -q "$ZIP_FILE" -d extracted
 
+          # البحث عن ملف Gradle الخاص بتطبيق Android
           PROJECT_FILE="$(find extracted -type f \
-            -path '*/app/build.gradle' -print -quit)"
+            \( -path '*/app/build.gradle' \
+            -o -path '*/app/build.gradle.kts' \) \
+            -print -quit)"
 
           if [ -z "$PROJECT_FILE" ]; then
-            PROJECT_FILE="$(find extracted -type f \
-              -path '*/app/build.gradle.kts' -print -quit)"
-          fi
-
-          if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: Android Gradle build file not found."
-            find extracted -maxdepth 7 -type f | head -200
+            echo "ERROR: app/build.gradle was not found."
+            echo "Files found in ZIP:"
+            find extracted -maxdepth 8 -type f | head -200
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$(dirname "$PROJECT_FILE")")"
 
-          echo "Project directory: $PROJECT_DIR"
+          echo "Android project: $PROJECT_DIR"
 
-          if [ ! -f "$PROJECT_DIR/app/src/main/assets/index.html" ]; then
-            echo "ERROR: Android assets/index.html not found."
-            find "$PROJECT_DIR/app/src/main" -maxdepth 5 -type f | head -150 || true
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ] && \
+             [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
+            echo "ERROR: settings.gradle is missing."
             exit 1
           fi
 
-          echo "Checking launcher icon files..."
-          find "$PROJECT_DIR/app/src/main/res" -maxdepth 3 \
-            \( -iname '*launcher*' -o -iname '*ic_logo*' \) \
-            -type f -print || true
+          if [ ! -f "$PROJECT_DIR/app/src/main/assets/index.html" ]; then
+            echo "ERROR: assets/index.html is missing."
+            find "$PROJECT_DIR/app/src/main" -maxdepth 5 -type f \
+              | head -150 || true
+            exit 1
+          fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Project extracted successfully."
 
-      - name: Build debug APK
-        run: gradle -p "$PROJECT_DIR" assembleDebug
+      - name: Build NOVA PLAY APK
+        run: |
+          set -euo pipefail
+          gradle -p "$PROJECT_DIR" assembleDebug --no-daemon
 
       - name: Verify APK
         run: |
           set -euo pipefail
+
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
