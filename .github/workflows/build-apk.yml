@@ -1,3 +1,4 @@
+
 name: Build NOVA PLAY APK
 
 on:
@@ -43,34 +44,41 @@ jobs:
         run: |
           set -euo pipefail
 
-          # يمكنك تحديد اسم الملف من خلال متغير ZIP_FILE
-          ZIP_FILE="${ZIP_FILE:-NOVA_PLAY_ALL_IN_ONE.zip}"
+          # الأولوية للملف الجديد الذي يحتوي على تعديلات Xtream
+          ZIP_FILE=""
 
-          if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP file not found: $ZIP_FILE"
-            echo "Available ZIP files:"
+          for f in \
+            NOVA_PLAY_XTREAM_ADMIN.zip \
+            NOVA_PLAY_ALL_IN_ONE.zip; do
+            if [ -f "$f" ]; then
+              ZIP_FILE="$f"
+              break
+            fi
+          done
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No supported project ZIP found."
+            echo "ZIP files in repository:"
             find . -maxdepth 1 -type f -iname '*.zip' -print
             exit 1
           fi
 
-          echo "Using ZIP: $ZIP_FILE"
+          echo "Using project ZIP: $ZIP_FILE"
 
-          # فحص سلامة الملف قبل استخراجه
           unzip -t "$ZIP_FILE"
 
           rm -rf extracted
           mkdir -p extracted
           unzip -q "$ZIP_FILE" -d extracted
 
-          # البحث عن ملف Gradle الخاص بتطبيق Android
+          # ابحث عن مشروع Android داخل الأرشيف
           PROJECT_FILE="$(find extracted -type f \
             \( -path '*/app/build.gradle' \
             -o -path '*/app/build.gradle.kts' \) \
             -print -quit)"
 
           if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: app/build.gradle was not found."
-            echo "Files found in ZIP:"
+            echo "ERROR: Android app Gradle file not found."
             find extracted -maxdepth 8 -type f | head -200
             exit 1
           fi
@@ -87,8 +95,6 @@ jobs:
 
           if [ ! -f "$PROJECT_DIR/app/src/main/assets/index.html" ]; then
             echo "ERROR: assets/index.html is missing."
-            find "$PROJECT_DIR/app/src/main" -maxdepth 5 -type f \
-              | head -150 || true
             exit 1
           fi
 
